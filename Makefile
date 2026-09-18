@@ -20,22 +20,22 @@ all: $(TARGET)
 
 # Compile target
 $(TARGET): $(OBJS)
-        $(CC) $(CFLAGS) -o $@ $^ $(GLIB_LIBS)
+	$(CC) $(CFLAGS) -o $@ $^ $(GLIB_LIBS)
 
 # Compile source files into object files
 %.o: %.c
-        $(CC) $(CFLAGS) $(GLIB_CFLAGS) $(NCURSES_CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) $(GLIB_CFLAGS) $(NCURSES_CFLAGS) -c -o $@ $<
 
 # Install
 install: $(TARGET)
-        install -Dm755 $(TARGET) $(DESTDIR)$(BINDIR)/$(TARGET)
+	install -Dm755 $(TARGET) $(DESTDIR)$(BINDIR)/$(TARGET)
 
 # Uninstall
 uninstall:
-        rm -f $(DESTDIR)$(BINDIR)/$(TARGET)
+	rm -f $(DESTDIR)$(BINDIR)/$(TARGET)
 
 # Clean up
 clean:
-        rm -f $(OBJS) $(TARGET)
+	rm -f $(OBJS) $(TARGET)
 
 .PHONY: all clean install uninstall
