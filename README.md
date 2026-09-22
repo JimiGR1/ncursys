@@ -48,6 +48,7 @@ Available via [GURU](https://github.com/gentoo/guru):
 ## Usage
 
     ncursys <path> [--threads=N]
+	'q' to exit
 
 ### Arguments
 

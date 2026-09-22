@@ -191,7 +191,7 @@ int main(int argc, char * argv[]) {
         ch = getch();
         if(ch != ERR) { // key is pressed
             switch(ch) {
-                case '~':
+                case 'q':
                     exit = true;
                     break;
                 case KEY_UP: {
@@ -470,7 +470,7 @@ int main(int argc, char * argv[]) {
     flushinp();
     endwin();
     
-    printf("Finishing...");
+    printf("Finishing...\n");
     
     build_thread_args.thread_state = 0;
     size_thread_args.thread_state = 0;
