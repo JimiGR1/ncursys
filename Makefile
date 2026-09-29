@@ -1,6 +1,6 @@
-CC = gcc
-CFLAGS = -Wall -g
-PKG_CONFIG = pkg-config
+CC ?= gcc
+CFLAGS ?= -Wall -g
+PKG_CONFIG ?= pkg-config
 GLIB_CFLAGS = $(shell $(PKG_CONFIG) --cflags glib-2.0)
 NCURSES_CFLAGS = $(shell $(PKG_CONFIG) --cflags ncursesw)
 NCURSES_LIBS = $(shell $(PKG_CONFIG) --libs ncursesw)
@@ -20,7 +20,7 @@ all: $(TARGET)
 
 # Compile target
 $(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $^ $(GLIB_LIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(GLIB_LIBS)
 
 # Compile source files into object files
 %.o: %.c
