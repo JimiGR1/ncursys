@@ -1,0 +1,19 @@
+.TH NCURSYS 1 "October 2026" "ncursys 1.0.2" "User Commands"
+.SH NAME
+ncursys \- terminal tool for visualizing hard disk usage
+.SH SYNOPSIS
+.B ncursys
+.I path
+.RB [ --threads-num=N ]
+.SH DESCRIPTION
+ncursys is an interactive terminal application for visualizing disk
+usage as a navigable tree, built with glib and ncurses.
+.SH OPTIONS
+.TP
+.I path
+Required. The directory path to scan.
+.TP
+.BI --threads-num= N
+Optional. Number of worker threads to use.
+.SH AUTHOR
+Written by Dimitris Trivizakis.

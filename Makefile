@@ -4,7 +4,7 @@ PKG_CONFIG ?= pkg-config
 GLIB_CFLAGS = $(shell $(PKG_CONFIG) --cflags glib-2.0)
 NCURSES_CFLAGS = $(shell $(PKG_CONFIG) --cflags ncursesw)
 NCURSES_LIBS = $(shell $(PKG_CONFIG) --libs ncursesw)
-GLIB_LIBS = $(shell $(PKG_CONFIG) --libs glib-2.0) $(NCURSES_LIBS) -ltinfow -lm
+GLIB_LIBS = $(shell $(PKG_CONFIG) --libs glib-2.0) $(NCURSES_LIBS) -lm
 
 # Define the target executable
 TARGET = ncursys
