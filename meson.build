@@ -1,4 +1,4 @@
-project('ncursys', 'c', version: '1.0.4')
+project('ncursys', 'c', version: '1.0.3')
 
 glib_dep = dependency('glib-2.0')
 ncurses_dep = dependency('ncursesw')
