@@ -24,7 +24,6 @@
 #include <math.h>
 #include <assert.h>
 #include <locale.h>
-#include <signal.h>
 #include <getopt.h>
 #include "path_data.h"
 #include "path_tree.h"
@@ -47,7 +46,8 @@ void*    build_tree(struct build_tree_struct *args);
 
 void     error(char *lib, char *msg, int error_code);
 void     init_curses(void);
-void     handle_resize(int sig);
+bool     setup_windows(void);
+void     clamp_view(int *curs_pos);
 
 bool     add_in_print_tree_root (GNode *node, gpointer data);
 void     add_in_print_tree_parent (GNode *node, GNode *parent, print_tree** p_tree);
@@ -66,8 +66,6 @@ int     fstm_pad_lines  = FILESYSTEM_PAD_CHUNK_LINES, /* this is the number of r
 int     start_y = 1,                        /* this is the offset from world 0 row to brd_wnd zero row */
         start_x = 1,                        /* this is the offset from world 0 col to brd_wnd zero col */
         pad_pos = 0;                        /* this is the current start position */
-
-volatile sig_atomic_t caught_resize = 0;    /* this becomes 1 when resize is raised (SIGWINCH caught) */
 
 bool    show_perc_bar   = true,             /* this is true if width can hold perc bar number */
         show_sizes      = true,             /* this is true if width can hold size number */
@@ -94,9 +92,16 @@ int main(int argc, char * argv[]) {
 
     while ((opt = getopt_long(argc, argv, "t:x", long_options, &option_index)) != -1) {
         switch (opt) {
-            case 't':
-                thread_number = atoi(optarg);
+            case 't': {
+                char *end;
+                long n = strtol(optarg, &end, 10);
+                if(*optarg == '\0' || *end != '\0' || n < 1 || n > MAX_THREADS) {
+                    fprintf(stderr, "Invalid thread number '%s': expected a number from 1 to %d\n", optarg, MAX_THREADS);
+                    return EXIT_FAILURE;
+                }
+                thread_number = (int)n;
                 break;
+            }
             case 'x':
                 one_file_system = true;
                 break;
@@ -118,46 +123,15 @@ int main(int argc, char * argv[]) {
     }
     
     init_curses();
-    
-    if (COLS <= fstm_pad_width) {
-        fstm_pad_width = COLS - 2;
-    }
-    
-    fstm_pad_height = LINES - HEADER_HEIGHT - 2;
-    
-    show_files = COLS >= SHOW_FILES_COL_THRESHOLD;
-    show_subdirs = COLS >= SHOW_SUBDIRS_COL_THRESHOLD;
-    show_items = COLS >= SHOW_ITEMS_COL_THRESHOLD;
-    show_sizes = COLS >= SHOW_SIZES_COL_THRESHOLD;
-    show_perc_bar = COLS >= SHOW_PERC_BAR_COL_THRESHOLD;
 
+    bool too_small = !setup_windows();      /* true while the terminal is below MIN_COLS x MIN_LINES */
+    bool force_redraw = false;              /* redraw on the next idle pass instead of waiting for REFRESH_INTERVAL */
 
-    brd_wnd = newwin(fstm_pad_height + 2, fstm_pad_width + 2, start_y - 1, start_x - 1);
-    box(brd_wnd, 0, 0);
-    fstm_window = newpad(fstm_pad_lines, fstm_pad_width);
-    scrollbar_win = newwin(fstm_pad_height, 1, start_y, start_x + fstm_pad_width - 1);
-    
     int curs_pos = start_y;
     int scrollbar_pos = 0;
     int scrollbar_height = 0;
     double visible_pad_ratio = 1.0;
-    
-    /* set up col names */
-    wattron(brd_wnd, COLOR_PAIR(TERM_DEFAULT) | A_BOLD | A_REVERSE);
-    mvwprintw(brd_wnd, 0, 2, "Name");
-    if(show_sizes)
-        mvwprintw(brd_wnd, 0, 2 + FILENAME_FIXED_LENGTH + WINDOW_BAR_LENGTH + 2 + 3, "Size"); // 2 spaces between filename and percentage bar + 3 spaces between percentage bar and size
-    if(show_items)
-        mvwprintw(brd_wnd, 0, 2 + FILENAME_FIXED_LENGTH + WINDOW_BAR_LENGTH + 2 + 3 + SIZE_COL_LENGTH + 1, "Items"); 
-    if(show_subdirs)
-        mvwprintw(brd_wnd, 0, 2 + FILENAME_FIXED_LENGTH + WINDOW_BAR_LENGTH + 2 + 3 + SIZE_COL_LENGTH + 1 + ITEMS_COL_LENGTH + 1, "Subdirs");
-    if(show_files)
-        mvwprintw(brd_wnd, 0, 2 + FILENAME_FIXED_LENGTH + WINDOW_BAR_LENGTH + 2 + 3 + SIZE_COL_LENGTH + 1 + ITEMS_COL_LENGTH + 1 + SUBDIRS_COL_LENGTH + 1, "Files");
-    wattroff(brd_wnd, COLOR_PAIR(TERM_DEFAULT) | A_BOLD | A_REVERSE);
-    refresh();
-    wrefresh(brd_wnd);
-        
-    prefresh(fstm_window, pad_pos, 0, start_y, start_x, start_y + fstm_pad_height - 1, start_x + fstm_pad_width - 1);
+
     move(start_y, start_x); // Move the cursor
     
     //refresh();
@@ -187,11 +161,35 @@ int main(int argc, char * argv[]) {
     bool exit = false;
     while(!exit) {
         ch = getch();
+
+        // nothing is drawn until the terminal is big enough again
+        if(too_small) {
+            if(ch == 'q')
+                exit = true;
+            else if(ch == KEY_RESIZE) {
+                too_small = !setup_windows();
+                clamp_view(&curs_pos);
+                force_redraw = true;
+            }
+            else
+                napms(REBUILD_PRINT_TREE_INTERVAL);
+            continue;
+        }
+
         if(ch != ERR) { // key is pressed
             switch(ch) {
                 case 'q':
                     exit = true;
                     break;
+                case KEY_RESIZE: {
+                    // ncurses has already updated LINES and COLS
+                    too_small = !setup_windows();
+                    if(too_small)
+                        continue;
+                    clamp_view(&curs_pos);
+                    force_redraw = true; // the new pad is empty
+                    break;
+                }
                 case KEY_UP: {
                     // if cursor reached start of pad and more output lies above: scroll up
                     if(curs_pos == start_y && pad_pos > 0) {
@@ -337,8 +335,10 @@ int main(int argc, char * argv[]) {
             gettimeofday(&current_time, NULL);
             long elapsed_time = (current_time.tv_sec - start_time.tv_sec) * 1000000L + (current_time.tv_usec - start_time.tv_usec);
             
-            if (elapsed_time >= delay) {
-                
+            if (elapsed_time >= delay || force_redraw) {
+
+                force_redraw = false;
+
                 g_mutex_lock(&pt->tree_access_mutex);
                                                 
                 // if path_tree is ready
@@ -367,9 +367,7 @@ int main(int argc, char * argv[]) {
                         fstm_pad_lines = needed_pad_lines;
 
                     /* keep the view inside the entries (e.g. after a collapse while scrolled down) */
-                    int max_pad_pos = MAX(total_fst_window_lines - fstm_pad_height, 0);
-                    if(pad_pos > max_pad_pos)
-                        pad_pos = max_pad_pos;
+                    clamp_view(&curs_pos);
 
                     wmove(fstm_window, 0, 0);
                     print_tree_sort_children(p_tree->root);
@@ -421,57 +419,6 @@ int main(int argc, char * argv[]) {
             curs_set(0); // hide main curser
         }
         
-        // check if SIGWINCH was raised - but do whatever here in main thread
-        if(caught_resize) {
-            
-            /* reset the terminal to its normal operating mode, which can help clear any artifacts or issues caused by the window resize. */
-            endwin();
-            clear();
-            refresh();
-            resizeterm(LINES, COLS);
-                
-            if (COLS <= OPT_PAD_WIDTH) {
-                fstm_pad_width = COLS - 2;
-            }
-            
-            fstm_pad_height = LINES - HEADER_HEIGHT - 2;
-            
-            show_files = COLS >= SHOW_FILES_COL_THRESHOLD;
-            show_subdirs = COLS >= SHOW_SUBDIRS_COL_THRESHOLD;
-            show_items = COLS >= SHOW_ITEMS_COL_THRESHOLD;
-            show_sizes = COLS >= SHOW_SIZES_COL_THRESHOLD;
-            show_perc_bar = COLS >= SHOW_PERC_BAR_COL_THRESHOLD;
-            
-            /* brd_wnd */
-            wresize(brd_wnd, fstm_pad_height + 2, fstm_pad_width + 2);
-            wmove(brd_wnd, start_y - 1, start_x - 1);
-            box(brd_wnd, 0, 0);
-            
-            /* set up col names */
-            wattron(brd_wnd, COLOR_PAIR(TERM_DEFAULT) | A_BOLD | A_REVERSE);
-            mvwprintw(brd_wnd, 0, 2, "Name");
-            if(show_sizes)
-                mvwprintw(brd_wnd, 0, 2 + FILENAME_FIXED_LENGTH + WINDOW_BAR_LENGTH + 2 + 3, "Size"); // 2 spaces between filename and percentage bar + 3 spaces between percentage bar and size
-            if(show_items)
-                mvwprintw(brd_wnd, 0, 2 + FILENAME_FIXED_LENGTH + WINDOW_BAR_LENGTH + 2 + 3 + SIZE_COL_LENGTH + 1, "Items");
-            if(show_subdirs)
-                mvwprintw(brd_wnd, 0, 2 + FILENAME_FIXED_LENGTH + WINDOW_BAR_LENGTH + 2 + 3 + SIZE_COL_LENGTH + 1 + ITEMS_COL_LENGTH + 1, "Subdirs");
-            if(show_files)
-                mvwprintw(brd_wnd, 0, 2 + FILENAME_FIXED_LENGTH + WINDOW_BAR_LENGTH + 2 + 3 + SIZE_COL_LENGTH + 1 + ITEMS_COL_LENGTH + 1 + SUBDIRS_COL_LENGTH + 1, "Files");
-            wattroff(brd_wnd, COLOR_PAIR(TERM_DEFAULT) | A_BOLD | A_REVERSE);
-                        
-            /* fstm_window */
-            wresize(fstm_window, fstm_pad_lines, fstm_pad_width);
-            mvwin(scrollbar_win, start_y, start_x + fstm_pad_width - 1);
-            
-            wrefresh(scrollbar_win);
-            refresh();
-            wrefresh(brd_wnd);
-            
-            caught_resize = 0;
-            
-        }
-        
     }
     
     // clear curses to restore terminal
@@ -503,8 +450,8 @@ void init_curses(void) {
     
     init_pair(TERM_DEFAULT, -1, -1);
     
-    signal(SIGWINCH, handle_resize); // Set up the signal handler
-    noecho();                        // Don't echo any keypresses
+    // resizes arrive as KEY_RESIZE from getch() through ncurses' own SIGWINCH handler
+    noecho();                       // Don't echo any keypresses
     cbreak();                        // Don't wait for enter; pass back every keypress
     nodelay(stdscr, true);           // set non blocking
     keypad(stdscr, true);            // Enable arrow keys
@@ -512,8 +459,67 @@ void init_curses(void) {
     //mousemask(ALL_MOUSE_EVENTS | REPORT_MOUSE_POSITION, NULL);
 }
 
-void handle_resize(int sig) {
-    caught_resize = true;
+/* (re)creates the windows for the current terminal size - returns false (and shows a notice) if the terminal is too small */
+bool setup_windows(void) {
+
+    if(scrollbar_win != NULL) { delwin(scrollbar_win); scrollbar_win = NULL; }
+    if(fstm_window != NULL)   { delwin(fstm_window);   fstm_window = NULL; }
+    if(brd_wnd != NULL)       { delwin(brd_wnd);       brd_wnd = NULL; }
+
+    clear();
+
+    if(COLS < MIN_COLS || LINES < MIN_LINES) {
+        mvprintw(0, 0, "Terminal too small: %dx%d, need at least %dx%d ('q' to exit)", COLS, LINES, MIN_COLS, MIN_LINES);
+        refresh();
+        return false;
+    }
+
+    fstm_pad_width = MIN(OPT_PAD_WIDTH, COLS - 2);
+    fstm_pad_height = LINES - HEADER_HEIGHT - 2;
+
+    show_files = COLS >= SHOW_FILES_COL_THRESHOLD;
+    show_subdirs = COLS >= SHOW_SUBDIRS_COL_THRESHOLD;
+    show_items = COLS >= SHOW_ITEMS_COL_THRESHOLD;
+    show_sizes = COLS >= SHOW_SIZES_COL_THRESHOLD;
+    show_perc_bar = COLS >= SHOW_PERC_BAR_COL_THRESHOLD;
+
+    brd_wnd = newwin(fstm_pad_height + 2, fstm_pad_width + 2, start_y - 1, start_x - 1);
+    fstm_window = newpad(fstm_pad_lines, fstm_pad_width);
+    scrollbar_win = newwin(fstm_pad_height, 1, start_y, start_x + fstm_pad_width - 1);
+    if(brd_wnd == NULL || fstm_window == NULL || scrollbar_win == NULL)
+        error("curses", "failed to create windows", CURSES_INIT_ERROR);
+
+    box(brd_wnd, 0, 0);
+
+    /* set up col names */
+    wattron(brd_wnd, COLOR_PAIR(TERM_DEFAULT) | A_BOLD | A_REVERSE);
+    mvwprintw(brd_wnd, 0, 2, "Name");
+    if(show_sizes)
+        mvwprintw(brd_wnd, 0, 2 + FILENAME_FIXED_LENGTH + WINDOW_BAR_LENGTH + 2 + 3, "Size"); // 2 spaces between filename and percentage bar + 3 spaces between percentage bar and size
+    if(show_items)
+        mvwprintw(brd_wnd, 0, 2 + FILENAME_FIXED_LENGTH + WINDOW_BAR_LENGTH + 2 + 3 + SIZE_COL_LENGTH + 1, "Items");
+    if(show_subdirs)
+        mvwprintw(brd_wnd, 0, 2 + FILENAME_FIXED_LENGTH + WINDOW_BAR_LENGTH + 2 + 3 + SIZE_COL_LENGTH + 1 + ITEMS_COL_LENGTH + 1, "Subdirs");
+    if(show_files)
+        mvwprintw(brd_wnd, 0, 2 + FILENAME_FIXED_LENGTH + WINDOW_BAR_LENGTH + 2 + 3 + SIZE_COL_LENGTH + 1 + ITEMS_COL_LENGTH + 1 + SUBDIRS_COL_LENGTH + 1, "Files");
+    wattroff(brd_wnd, COLOR_PAIR(TERM_DEFAULT) | A_BOLD | A_REVERSE);
+
+    refresh();
+    wrefresh(brd_wnd);
+
+    return true;
+}
+
+/* keeps the selected entry on screen and the view inside the entries, e.g. after a resize or a collapse */
+void clamp_view(int *curs_pos) {
+    int selected = pad_pos + (*curs_pos - start_y);
+    selected = MIN(selected, MAX(total_fst_window_lines - 1, 0));
+
+    if(selected - pad_pos > fstm_pad_height - 1)
+        pad_pos = selected - (fstm_pad_height - 1);
+    pad_pos = MIN(pad_pos, MAX(total_fst_window_lines - fstm_pad_height, 0));
+
+    *curs_pos = start_y + (selected - pad_pos);
 }
 
 void* build_tree(struct build_tree_struct *args) {

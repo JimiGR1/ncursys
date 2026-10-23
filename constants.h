@@ -32,6 +32,10 @@
 #define OPT_PAD_WIDTH 108
 /* terminal width must be at least MIN_COLS */
 #define MIN_COLS 76
+/* terminal height must be at least MIN_LINES */
+#define MIN_LINES 5
+/* upper limit accepted for --threads */
+#define MAX_THREADS 1024
 /* show files column if terminal width greater or equal */
 #define SHOW_FILES_COL_THRESHOLD 109
 /* show subdirs column if terminal width greater or equal */
