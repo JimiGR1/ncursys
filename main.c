@@ -59,7 +59,8 @@ WINDOW  *brd_wnd,                           /* this refers to the top left boxed
         *fstm_window,                       /* this refers to the pad containing the main output */
         *scrollbar_win;                     /* this refers to the vertical scrollbar on the rightmost columns of brd_wnd */
 
-int     fstm_pad_height,                    /* this is the number of rows the pad can display in screen */
+int     fstm_pad_lines  = FILESYSTEM_PAD_CHUNK_LINES, /* this is the number of rows allocated in the pad - follows the number of entries */
+        fstm_pad_height,                    /* this is the number of rows the pad can display in screen */
         fstm_pad_width  = OPT_PAD_WIDTH;    /* this is the number of columns the pad displays: this is fixed we do not pad left - right */
 
 int     start_y = 1,                        /* this is the offset from world 0 row to brd_wnd zero row */
@@ -133,7 +134,7 @@ int main(int argc, char * argv[]) {
 
     brd_wnd = newwin(fstm_pad_height + 2, fstm_pad_width + 2, start_y - 1, start_x - 1);
     box(brd_wnd, 0, 0);
-    fstm_window = newpad(MAX_FILESYSTEM_WINDOW_LINES, fstm_pad_width);
+    fstm_window = newpad(fstm_pad_lines, fstm_pad_width);
     scrollbar_win = newwin(fstm_pad_height, 1, start_y, start_x + fstm_pad_width - 1);
     
     int curs_pos = start_y;
@@ -239,7 +240,11 @@ int main(int argc, char * argv[]) {
                         continue;
 
                     GNode *fpn0 = print_tree_get_tree_node_by_v_index(p_tree, &entry_index);
-                    
+
+                    // cursor is not on an entry (e.g. empty directory, or root is a file)
+                    if(fpn0 == NULL)
+                        break;
+
                     print_node * fpn = (print_node *)fpn0->data;
                     
                     // get corresponding path_data from path_tree
@@ -355,17 +360,23 @@ int main(int argc, char * argv[]) {
                 // traverse tree - flatten - print
                 if(p_tree != (print_tree *)NULL && p_tree->root != (GNode *)NULL) {
                     total_fst_window_lines = g_node_n_nodes(p_tree->root, G_TRAVERSE_ALL) - 1;
+
+                    /* size the pad to the entries in whole chunks - always leaves a spare row for the last newline */
+                    int needed_pad_lines = (total_fst_window_lines / FILESYSTEM_PAD_CHUNK_LINES + 1) * FILESYSTEM_PAD_CHUNK_LINES;
+                    if(needed_pad_lines != fstm_pad_lines && wresize(fstm_window, needed_pad_lines, fstm_pad_width) == OK)
+                        fstm_pad_lines = needed_pad_lines;
+
+                    /* keep the view inside the entries (e.g. after a collapse while scrolled down) */
+                    int max_pad_pos = MAX(total_fst_window_lines - fstm_pad_height, 0);
+                    if(pad_pos > max_pad_pos)
+                        pad_pos = max_pad_pos;
+
                     wmove(fstm_window, 0, 0);
                     print_tree_sort_children(p_tree->root);
                     int v_index = 1;
                     g_node_traverse (p_tree->root, G_PRE_ORDER, G_TRAVERSE_ALL, -1, (GNodeTraverseFunc)print_node_data, &v_index);
-                    /* if total rows are less than pad height clear everything above last row from leftovers (usefull after collapse) */
-                    if(total_fst_window_lines < fstm_pad_height) {
-                        for(int i = 0; i < fstm_pad_height - total_fst_window_lines; i++) {
-                            wmove(fstm_window, total_fst_window_lines + i, 0);
-                            wclrtoeol(fstm_window);
-                        }
-                    }
+                    /* clear leftovers below the last entry (usefull after collapse) */
+                    wclrtobot(fstm_window);
                 }
                 
                 g_mutex_unlock(&pt->tree_access_mutex);
@@ -450,7 +461,7 @@ int main(int argc, char * argv[]) {
             wattroff(brd_wnd, COLOR_PAIR(TERM_DEFAULT) | A_BOLD | A_REVERSE);
                         
             /* fstm_window */
-            wresize(fstm_window, MAX_FILESYSTEM_WINDOW_LINES, fstm_pad_width);
+            wresize(fstm_window, fstm_pad_lines, fstm_pad_width);
             mvwin(scrollbar_win, start_y, start_x + fstm_pad_width - 1);
             
             wrefresh(scrollbar_win);
@@ -554,7 +565,9 @@ gboolean print_node_data (GNode *node, gpointer data) {
     GNode *parent_node = tn->parent;
     path_data *parent_data = (path_data *)parent_node ->data;
     
-    wprintw(fstm_window, "%*s", (pn->level - 2) * 2 , "");
+    // indentation stops growing once only MIN_FILENAME_LENGTH columns are left for the name, so the row never overflows
+    int indent = MIN(((int)pn->level - 2) * 2, FILENAME_FIXED_LENGTH - MIN_FILENAME_LENGTH);
+    wprintw(fstm_window, "%*s", indent, "");
     
     if(node_data->is_directory) {
         wattron(fstm_window, COLOR_PAIR(TERM_DEFAULT) | A_REVERSE);
@@ -564,7 +577,7 @@ gboolean print_node_data (GNode *node, gpointer data) {
         wprintw(fstm_window, " ");
     }
     
-    gchar* padded_str = get_str_normalized_padded(node_data->filename, pn->level, FILENAME_FIXED_LENGTH);
+    gchar* padded_str = get_str_normalized_padded(node_data->filename, FILENAME_FIXED_LENGTH - indent);
     wprintw(fstm_window, "%s  ", padded_str);
     g_free(padded_str);
     

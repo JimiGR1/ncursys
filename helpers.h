@@ -22,6 +22,6 @@
 #include <glib.h>
 
 gchar*   get_pretty_size(unsigned long long size);
-gchar*   get_str_normalized_padded(const char * utf8_str, int level, int final_length);
+gchar*   get_str_normalized_padded(const char * utf8_str, int final_length);
 
 #endif /* helpers_h */

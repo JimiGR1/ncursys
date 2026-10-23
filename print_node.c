@@ -27,6 +27,8 @@ print_node* print_node_create(GNode *node) {
     
     pd->node = node;
     pd->node_state = COLLAPSED;
-    
+    pd->level = 0;
+    pd->v_index = 0;    // not laid out yet - visible entries start at 1
+
     return pd;
 }

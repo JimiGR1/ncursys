@@ -22,8 +22,8 @@
 
 #define TERM_DEFAULT 1
 
-/* maximum number of entries in directory - defines pad height */
-#define MAX_FILESYSTEM_WINDOW_LINES 1000
+/* the pad height follows the number of entries, in steps of this many lines */
+#define FILESYSTEM_PAD_CHUNK_LINES 1000
 /* screen refresh interval in microseconds */
 #define REFRESH_INTERVAL 500000
 /* print tree rebuild interval in milliseconds */
@@ -44,6 +44,8 @@
 #define SHOW_PERC_BAR_COL_THRESHOLD 67
 /* fixed filename length */
 #define FILENAME_FIXED_LENGTH 30
+/* indentation stops growing at this depth so deep entries still show this much of their name */
+#define MIN_FILENAME_LENGTH 8
 /* progress bar length */
 #define WINDOW_BAR_LENGTH 30
 /* size col length */

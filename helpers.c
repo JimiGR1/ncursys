@@ -33,21 +33,26 @@ gchar * get_pretty_size(unsigned long long size) {
     return res;
 }
 
-gchar* get_str_normalized_padded(const char * utf8_str, int level, int final_length) {
+gchar* get_str_normalized_padded(const char * utf8_str, int final_length) {
     gchar *truncated_str;
+    if (final_length < 0) final_length = 0;
+    // Filenames are arbitrary bytes, not necessarily UTF-8: replace invalid sequences with U+FFFD first,
+    // otherwise g_utf8_normalize returns NULL.
+    gchar *valid_str = g_utf8_make_valid(utf8_str, -1);
     // Normalize the string to NFC (Normalization Form C), which combines characters and their diacritics into a single composed character.
     // more here https://unicode.org/reports/tr15/
-    gchar *normalized_str = g_utf8_normalize(utf8_str, -1, G_NORMALIZE_DEFAULT_COMPOSE);
-    
-    if (g_utf8_strlen(normalized_str, -1) > final_length - ((level - 2) * 2)) {
-        gchar *end_ptr = g_utf8_offset_to_pointer(normalized_str, final_length - ((level - 2) * 2));
+    gchar *normalized_str = g_utf8_normalize(valid_str, -1, G_NORMALIZE_DEFAULT_COMPOSE);
+    g_free(valid_str);
+
+    if (g_utf8_strlen(normalized_str, -1) > final_length) {
+        gchar *end_ptr = g_utf8_offset_to_pointer(normalized_str, final_length);
         truncated_str = g_strndup(normalized_str, end_ptr - normalized_str);
     } else {
         truncated_str = g_strdup(normalized_str);
     }
-    
+
     glong len = g_utf8_strlen(truncated_str, -1);
-    glong padding = final_length - ((level - 2) * 2) - len;
+    glong padding = final_length - len;
     if (padding < 0) padding = 0;
     gchar *pad_str = g_strnfill(padding, ' ');
     
