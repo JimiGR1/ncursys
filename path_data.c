@@ -27,10 +27,7 @@ void path_data_destroy(path_data *pd) {
     
     pd->filename = (char *)NULL;
     pd->fullpath = (char *)NULL;
-    
-    if(pd->is_directory)
-        unique_int_store_free(pd->nodes_computed);
-    
+
 }
 
 path_data* path_data_create(const char *fullpath, const char *filename, bool is_directory) {
@@ -43,9 +40,7 @@ path_data* path_data_create(const char *fullpath, const char *filename, bool is_
     
     pd->size = 0;
     pd->is_directory = is_directory;
-    if(pd->is_directory)
-        pd->nodes_computed = unique_int_store_new();
-    
+
     pd->num_files = 0;
     pd->num_dirs = 0;
     

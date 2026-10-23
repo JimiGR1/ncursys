@@ -37,19 +37,12 @@
 // this is passed to build_tree_thread
 struct build_tree_struct {
     path_tree **pt;
-    volatile int thread_state;
+    gint cancel;        // access only with g_atomic_int_*
     const char *path;
     int threads;
 };
 
-// this is passed to update_size_thread
-struct size_tree_struct {
-    path_tree **pt;
-    volatile int thread_state;
-};
-
 void*    build_tree(struct build_tree_struct *args);
-void*    get_tree_size(struct size_tree_struct *args);
 
 void     error(char *lib, char *msg, int error_code);
 void     init_curses(void);
@@ -159,7 +152,7 @@ int main(int argc, char * argv[]) {
     
     //refresh();
     
-    GThread *build_tree_thread, *update_size_thread;
+    GThread *build_tree_thread;
     path_tree *pt = path_tree_init();
     if(pt == NULL) {
         error("main", "path_tree creation failed memory allocation", MEMORY_ALLOCATION_ERROR);
@@ -170,14 +163,9 @@ int main(int argc, char * argv[]) {
         error("main", "print_tree creation failed memory allocation", MEMORY_ALLOCATION_ERROR);
     }
     
-    int thread_state = 1;
-    struct build_tree_struct build_thread_args = {&pt, thread_state, path, thread_number};
+    struct build_tree_struct build_thread_args = {&pt, 0, path, thread_number};
     build_tree_thread = g_thread_new("build_tree_thread", (GThreadFunc)build_tree, &build_thread_args);
-    
-    int thread2_state = 1;
-    struct size_tree_struct size_thread_args = {&pt, thread2_state};
-    update_size_thread = g_thread_new("update_size_thread", (GThreadFunc)get_tree_size, &size_thread_args);
-    
+
 
     struct timeval start_time, current_time;
     gettimeofday(&start_time, NULL);
@@ -472,12 +460,10 @@ int main(int argc, char * argv[]) {
     
     printf("Finishing...\n");
     
-    build_thread_args.thread_state = 0;
-    size_thread_args.thread_state = 0;
-    
-    // Wait for the threads to terminate
+    g_atomic_int_set(&build_thread_args.cancel, 1);
+
+    // Wait for the build thread to terminate
     g_thread_join(build_tree_thread);
-    g_thread_join(update_size_thread);
     
     // cleanup
     //print_tree_destroy(p_tree);
@@ -510,23 +496,8 @@ void handle_resize(int sig) {
     caught_resize = true;
 }
 
-void* get_tree_size(struct size_tree_struct *args) {
-    for(;;) {
-        if(args->thread_state == 0)
-            break;
-        /* run tree leaves iteration for sizes update every 900ms to reduce CPU cycles */
-        napms(900);
-        path_tree_update_sizes(args->pt);
-        if((*(args->pt))->finished) {
-            path_tree_update_sizes(args->pt);
-            break;
-        }
-    }
-    return (void *)NULL;
-}
-
 void* build_tree(struct build_tree_struct *args) {
-    path_tree_build(args->pt, args->path, &args->thread_state, args->threads);
+    path_tree_build(args->pt, args->path, &args->cancel, args->threads);
     return (void *)NULL;
 }
 

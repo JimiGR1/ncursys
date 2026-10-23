@@ -10,7 +10,6 @@ sources = [
   'path_data.c',
   'print_node.c',
   'print_tree.c',
-  'unique_int_store.c',
   'path_tree.c',
   'helpers.c'
 ]

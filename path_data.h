@@ -21,15 +21,12 @@
 
 #include <stdbool.h>
 #include "print_node.h"
-#include "unique_int_store.h"
 
 typedef struct path_data {
     gchar *fullpath;
     gchar *filename;
     unsigned long long size;
     bool is_directory;
-    int node_id;
-    unique_int_store *nodes_computed;
     int num_files;
     int num_dirs;
 } path_data;

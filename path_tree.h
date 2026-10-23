@@ -27,7 +27,7 @@
 typedef struct path_tree {
     GNode *root;
     GMutex tree_access_mutex;
-    bool finished;
+    gint finished;      // set atomically to 1 when the scan is complete
 } path_tree, *path_tree_ptr;
 
 /**
@@ -37,14 +37,16 @@ typedef struct path_tree {
 path_tree *path_tree_init(void);
 
 /**
- * Creates a path_tree for given path.
+ * Creates a path_tree for given path. Returns when the scan is complete
+ * or after *cancel has been set (atomically) to non zero.
+ * Node sizes and counts are kept up to date while the tree is built.
  *
  * @param pt Pointer to the struct to create.
  * @param path The path will be the root of the tree.
- * @param thread_state Signal to break loop and end thread
+ * @param cancel Set to non zero with g_atomic_int_set to abort the scan
  * @param threads The number of threads in build tree pool
  */
-void path_tree_build(path_tree **pt, const char * path, volatile int *thread_state, int threads);
+void path_tree_build(path_tree **pt, const char * path, gint *cancel, int threads);
 
 /**
  * Clears given tree and releases allocated resources.
@@ -52,12 +54,5 @@ void path_tree_build(path_tree **pt, const char * path, volatile int *thread_sta
  * @param tree Pointer to the tree.
  */
 void path_tree_destroy(path_tree *tree);
-
-/**
- * Traverse tree and update node sizes.
- *
- * @param tree Pointer to the tree.
- */
-void path_tree_update_sizes(path_tree **tree);
 
 #endif /* path_tree_h */

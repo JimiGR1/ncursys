@@ -8,7 +8,7 @@ GLIB_LIBS = $(shell $(PKG_CONFIG) --libs glib-2.0) $(NCURSES_LIBS) -lm
 
 # Define the target executable
 TARGET = ncursys
-SRCS = main.c path_data.c print_node.c print_tree.c unique_int_store.c path_tree.c helpers.c
+SRCS = main.c path_data.c print_node.c print_tree.c path_tree.c helpers.c
 OBJS = $(SRCS:.c=.o)
 
 # Install locations
