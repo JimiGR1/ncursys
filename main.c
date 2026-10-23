@@ -40,6 +40,7 @@ struct build_tree_struct {
     gint cancel;        // access only with g_atomic_int_*
     const char *path;
     int threads;
+    bool one_file_system;
 };
 
 void*    build_tree(struct build_tree_struct *args);
@@ -80,30 +81,38 @@ int main(int argc, char * argv[]) {
     // Set the locale to follow shell env
     setlocale(LC_ALL, "");
     // Define long options
-    static struct option long_options[] = { {"threads", required_argument, 0, 't'}, {0, 0, 0, 0} };
-    
+    static struct option long_options[] = {
+        {"threads", required_argument, 0, 't'},
+        {"one-file-system", no_argument, 0, 'x'},
+        {0, 0, 0, 0}
+    };
+
     int opt, option_index, thread_number = g_get_num_processors() + 2;
+    bool one_file_system = false;
     char *path = NULL;
 
-    while ((opt = getopt_long(argc, argv, "t:", long_options, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "t:x", long_options, &option_index)) != -1) {
         switch (opt) {
             case 't':
                 thread_number = atoi(optarg);
                 break;
+            case 'x':
+                one_file_system = true;
+                break;
             case '?':
-                fprintf(stderr, "Unknown option or missing argument. Usage: %s path [--threads thread_number]\n", argv[0]);
+                fprintf(stderr, "Unknown option or missing argument. Usage: %s path [--threads thread_number] [-x]\n", argv[0]);
                 return EXIT_FAILURE;
             default:
-                fprintf(stderr, "Usage: %s path [--threads n_threads]\n", argv[0]);
+                fprintf(stderr, "Usage: %s path [--threads n_threads] [-x]\n", argv[0]);
                 return EXIT_FAILURE;
         }
     }
-    
+
     // Remaining argument is the path
     if (optind < argc) {
         path = argv[optind];
     } else {
-        fprintf(stderr, "Usage: %s path [--threads thread_number]\n", argv[0]);
+        fprintf(stderr, "Usage: %s path [--threads thread_number] [-x]\n", argv[0]);
         return EXIT_FAILURE;
     }
     
@@ -163,7 +172,7 @@ int main(int argc, char * argv[]) {
         error("main", "print_tree creation failed memory allocation", MEMORY_ALLOCATION_ERROR);
     }
     
-    struct build_tree_struct build_thread_args = {&pt, 0, path, thread_number};
+    struct build_tree_struct build_thread_args = {&pt, 0, path, thread_number, one_file_system};
     build_tree_thread = g_thread_new("build_tree_thread", (GThreadFunc)build_tree, &build_thread_args);
 
 
@@ -497,7 +506,7 @@ void handle_resize(int sig) {
 }
 
 void* build_tree(struct build_tree_struct *args) {
-    path_tree_build(args->pt, args->path, &args->cancel, args->threads);
+    path_tree_build(args->pt, args->path, &args->cancel, args->threads, args->one_file_system);
     return (void *)NULL;
 }
 

@@ -40,13 +40,15 @@ path_tree *path_tree_init(void);
  * Creates a path_tree for given path. Returns when the scan is complete
  * or after *cancel has been set (atomically) to non zero.
  * Node sizes and counts are kept up to date while the tree is built.
+ * Sizes follow du: allocated blocks, directories included, hard links counted once.
  *
  * @param pt Pointer to the struct to create.
  * @param path The path will be the root of the tree.
  * @param cancel Set to non zero with g_atomic_int_set to abort the scan
  * @param threads The number of threads in build tree pool
+ * @param one_file_system Skip entries on other filesystems than path (du -x)
  */
-void path_tree_build(path_tree **pt, const char * path, gint *cancel, int threads);
+void path_tree_build(path_tree **pt, const char * path, gint *cancel, int threads, bool one_file_system);
 
 /**
  * Clears given tree and releases allocated resources.

@@ -4,7 +4,8 @@ ncursys \- terminal tool for visualizing hard disk usage
 .SH SYNOPSIS
 .B ncursys
 .I path
-.RB [ --threads-num=N ]
+.RB [ --threads=N ]
+.RB [ -x ]
 .SH DESCRIPTION
 ncursys is an interactive terminal application for visualizing disk
 usage as a navigable tree, built with glib and ncurses.
@@ -13,7 +14,16 @@ usage as a navigable tree, built with glib and ncurses.
 .I path
 Required. The directory path to scan.
 .TP
-.BI --threads-num= N
-Optional. Number of worker threads to use.
+.BI --threads= N
+Optional. Number of worker threads to use (default: number of CPUs + 2).
+.TP
+.BR -x ", " --one-file-system
+Optional. Skip directories on different file systems, like
+.BR "du -x" .
+.SH NOTES
+Sizes are computed like
+.BR du (1):
+allocated blocks are counted, directories included, and a file with
+several hard links is counted only once.
 .SH AUTHOR
 Written by Dimitris Trivizakis.

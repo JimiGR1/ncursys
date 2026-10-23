@@ -47,7 +47,7 @@ Available via [GURU](https://github.com/gentoo/guru):
 
 ## Usage
 
-    ncursys <path> [--threads=N]
+    ncursys <path> [--threads=N] [-x]
 	'q' to exit
 
 ### Arguments
@@ -56,14 +56,21 @@ Available via [GURU](https://github.com/gentoo/guru):
 |--------------------|----------|----------------------------------------------------|
 | `<path>`           | Yes      | The directory path to scan/process.                |
 | `--threads=N`      | No       | Number of worker threads to use (default: CPU + 2).      |
+| `-x`, `--one-file-system` | No | Skip directories on other filesystems, like `du -x`. |
+
+Sizes are computed like `du`: allocated blocks are counted, directories included, and hard links are counted once.
 
 ### Examples
 
     sudo ncursys /
 
+Scan only the root filesystem (skips `/proc`, `/sys` and other mounts):
+
+    sudo ncursys -x /
+
 Run with a custom thread count:
 
-    ncursys /home/user --threads-num=8
+    ncursys /home/user --threads=8
 
 ## License
 

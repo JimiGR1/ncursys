@@ -44,7 +44,35 @@ struct build_context {
     gint pending;           // tasks pushed but not yet finished - scan is done when it drops to 0
     GMutex done_mutex;
     GCond done_cond;
+    bool one_file_system;   // like du -x: skip entries on a different device than the root
+    dev_t root_dev;
+    GHashTable *seen_inodes;// inode_key of multiply linked files already counted - guarded by lock_mutex
 };
+
+/* identifies a file across hard links */
+typedef struct inode_key {
+    dev_t dev;
+    ino_t ino;
+} inode_key;
+
+static guint inode_key_hash(gconstpointer key) {
+    const inode_key *k = (const inode_key *)key;
+    return (guint)(k->ino ^ (k->ino >> 32) ^ k->dev);
+}
+
+static gboolean inode_key_equal(gconstpointer a, gconstpointer b) {
+    const inode_key *ka = (const inode_key *)a;
+    const inode_key *kb = (const inode_key *)b;
+    return ka->dev == kb->dev && ka->ino == kb->ino;
+}
+
+/* returns true the first time a (dev, ino) is seen - caller must hold the tree lock */
+static bool mark_inode_seen(struct build_context *ctx, const struct stat *st) {
+    inode_key *key = g_new(inode_key, 1);
+    key->dev = st->st_dev;
+    key->ino = st->st_ino;
+    return g_hash_table_add(ctx->seen_inodes, key);
+}
 
 /* free heap memory of 'node' */
 gboolean free_node_memory(GNode *node, gpointer data) {
@@ -104,6 +132,9 @@ static void scan_path(struct build_context *ctx, queue_node *q_node) {
     if(lstat(q_node->path, &path_stat) != 0)
         return;
 
+    if(ctx->one_file_system && q_node->parent != (GNode *)NULL && path_stat.st_dev != ctx->root_dev)
+        return;
+
     /* create path_data - no lock needed, nobody else sees it yet */
     char path_copy[MAX_ABSOLUTE_PATH_NAME_SIZE];
     snprintf(path_copy, MAX_ABSOLUTE_PATH_NAME_SIZE, "%s", q_node->path);
@@ -115,14 +146,17 @@ static void scan_path(struct build_context *ctx, queue_node *q_node) {
     g_free(pd->fullpath);
     pd->fullpath = (gchar *)NULL;
 
-    if(!is_dir) {
-        pd->size = (unsigned long long)path_stat.st_blocks * 512;
-    }
+    // directories count their own blocks too, like du
+    pd->size = (unsigned long long)path_stat.st_blocks * 512;
 
     GNode *new_node = (GNode *)NULL;
 
     /* lock tree since we are adding a node */
     g_mutex_lock(ctx->lock_mutex);
+
+    // a hard linked file takes space once - only its first link seen is counted
+    if(!is_dir && path_stat.st_nlink > 1 && !mark_inode_seen(ctx, &path_stat))
+        pd->size = 0;
 
     // check if tree is created
     if(*(ctx->root) == (GNode *)NULL) {
@@ -170,11 +204,16 @@ void process_queue_node(gpointer data, gpointer user_data) {
 
 }
 
-void add_in_tree_in_iter(const char* path, GNode **root, GMutex* lock_mutex, gint *cancel, int threads) {
+void add_in_tree_in_iter(const char* path, GNode **root, GMutex* lock_mutex, gint *cancel, int threads, bool one_file_system) {
 
-    struct build_context ctx = { .lock_mutex = lock_mutex, .root = root, .cancel = cancel };
+    struct build_context ctx = { .lock_mutex = lock_mutex, .root = root, .cancel = cancel, .one_file_system = one_file_system };
     g_mutex_init(&ctx.done_mutex);
     g_cond_init(&ctx.done_cond);
+    ctx.seen_inodes = g_hash_table_new_full(inode_key_hash, inode_key_equal, g_free, NULL);
+
+    struct stat root_stat;
+    if(lstat(path, &root_stat) == 0)
+        ctx.root_dev = root_stat.st_dev;
 
     // init thread pool - workers push discovered children straight back into it
     ctx.pool = g_thread_pool_new(process_queue_node, &ctx, threads > 0 ? threads : 1, TRUE, NULL);
@@ -194,6 +233,7 @@ void add_in_tree_in_iter(const char* path, GNode **root, GMutex* lock_mutex, gin
     // no task is queued or running - nothing can push anymore
     g_thread_pool_free(ctx.pool, FALSE, TRUE);
 
+    g_hash_table_destroy(ctx.seen_inodes);
     g_cond_clear(&ctx.done_cond);
     g_mutex_clear(&ctx.done_mutex);
 
@@ -214,8 +254,8 @@ path_tree *path_tree_init(void) {
 
 }
 
-void path_tree_build(path_tree **pt, const char * path, gint *cancel, int threads) {
-    add_in_tree_in_iter(path, &((*pt)->root), &((*pt)->tree_access_mutex), cancel, threads);
+void path_tree_build(path_tree **pt, const char * path, gint *cancel, int threads, bool one_file_system) {
+    add_in_tree_in_iter(path, &((*pt)->root), &((*pt)->tree_access_mutex), cancel, threads, one_file_system);
     g_atomic_int_set(&(*pt)->finished, 1);
 }
 

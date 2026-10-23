@@ -20,15 +20,16 @@
 #include <stdio.h>
 
 gchar * get_pretty_size(unsigned long long size) {
-    gchar unit[] = {(char)0, 'K', 'M', 'G', 'P', 'E', 'Z'};
+    // unsigned long long tops out at 16 EB, so the index never runs past "EB"
+    const char *unit[] = {"B", "KB", "MB", "GB", "TB", "PB", "EB"};
     int unit_index = 0;
     double cur_size = (double)size;
-    while(cur_size > 1024) {
+    while(cur_size >= 1024 && unit_index < (int)G_N_ELEMENTS(unit) - 1) {
         cur_size /= 1024;
         unit_index++;
     }
-    
-    gchar *res = g_strdup_printf("%.1f%cB", cur_size, unit[unit_index]);
+
+    gchar *res = g_strdup_printf("%.1f%s", cur_size, unit[unit_index]);
     return res;
 }
 
