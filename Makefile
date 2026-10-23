@@ -8,7 +8,7 @@ GLIB_LIBS = $(shell $(PKG_CONFIG) --libs glib-2.0) $(NCURSES_LIBS) -lm
 
 # Define the target executable
 TARGET = ncursys
-SRCS = main.c path_data.c print_node.c print_tree.c path_tree.c helpers.c
+SRCS = main.c path_data.c path_tree.c tree_view.c helpers.c
 OBJS = $(SRCS:.c=.o)
 
 # Install locations
@@ -23,8 +23,11 @@ $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(GLIB_LIBS)
 
 # Compile source files into object files
+# -MMD -MP also write the headers each object depends on into a .d file, so editing a header rebuilds its users
 %.o: %.c
-	$(CC) $(CFLAGS) $(GLIB_CFLAGS) $(NCURSES_CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) -MMD -MP $(GLIB_CFLAGS) $(NCURSES_CFLAGS) -c -o $@ $<
+
+-include $(OBJS:.o=.d)
 
 # Install
 install: $(TARGET)
@@ -36,6 +39,6 @@ uninstall:
 
 # Clean up
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -f $(OBJS) $(OBJS:.o=.d) $(TARGET)
 
 .PHONY: all clean install uninstall

@@ -16,19 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <stdio.h>
-#include <pthread.h>
 #include <glib.h>
 #include <dirent.h>
 #include <sys/stat.h>
-#include <unistd.h>
-#include <libgen.h>
-#include <stdlib.h>
 #include <string.h>
 #include "path_tree.h"
 #include "path_data.h"
-
-#define MAX_ABSOLUTE_PATH_NAME_SIZE 4096
 
 typedef struct queue_node {
     gchar *path;
@@ -75,16 +68,12 @@ static bool mark_inode_seen(struct build_context *ctx, const struct stat *st) {
 }
 
 /* free heap memory of 'node' */
-gboolean free_node_memory(GNode *node, gpointer data) {
+static gboolean free_node_memory(GNode *node, gpointer data) {
 
     (void)data; // variable is not used
 
-    path_data *pd = (path_data *)node->data;
-
-    path_data_destroy(pd);
-
-    g_free(pd);
-    pd = (path_data *)NULL;
+    path_data_destroy((path_data *)node->data);
+    node->data = NULL;
 
     return FALSE; // Continue traversal
 }
@@ -136,15 +125,19 @@ static void scan_path(struct build_context *ctx, queue_node *q_node) {
         return;
 
     /* create path_data - no lock needed, nobody else sees it yet */
-    char path_copy[MAX_ABSOLUTE_PATH_NAME_SIZE];
-    snprintf(path_copy, MAX_ABSOLUTE_PATH_NAME_SIZE, "%s", q_node->path);
-    char *filename = basename(path_copy);
-
     bool is_dir = S_ISDIR(path_stat.st_mode);
 
-    path_data *pd = path_data_create(q_node->path, filename, is_dir);
-    g_free(pd->fullpath);
-    pd->fullpath = (gchar *)NULL;
+    path_data *pd;
+    if(q_node->parent == (GNode *)NULL) {
+        // root path is user input - may end with '/' or be '.'
+        gchar *filename = g_path_get_basename(q_node->path);
+        pd = path_data_create(filename, is_dir);
+        g_free(filename);
+    }
+    else {
+        // children paths are always built as "<parent>/<name>"
+        pd = path_data_create(strrchr(q_node->path, '/') + 1, is_dir);
+    }
 
     // directories count their own blocks too, like du
     pd->size = (unsigned long long)path_stat.st_blocks * 512;
@@ -163,7 +156,8 @@ static void scan_path(struct build_context *ctx, queue_node *q_node) {
         new_node = *(ctx->root) = g_node_new(pd);
     }
     else {
-        new_node = g_node_append_data(q_node->parent, pd);
+        // prepend is O(1), append walks all siblings - order does not matter, the view sorts
+        new_node = g_node_prepend_data(q_node->parent, pd);
         add_to_ancestors(new_node);
     }
 
@@ -220,7 +214,7 @@ void add_in_tree_in_iter(const char* path, GNode **root, GMutex* lock_mutex, gin
 
     // start with root
     queue_node *qn = g_new(queue_node, 1);
-    qn->path = g_strdup_printf("%s", path);
+    qn->path = g_strdup(path);
     qn->parent = (GNode *)NULL;
     push_task(&ctx, qn);
 
@@ -241,9 +235,7 @@ void add_in_tree_in_iter(const char* path, GNode **root, GMutex* lock_mutex, gin
 
 path_tree *path_tree_init(void) {
 
-    path_tree *pt = g_new(path_tree, 1);
-    if(pt == NULL)
-        return NULL;
+    path_tree *pt = g_new(path_tree, 1);    // g_new aborts on failure, never returns NULL
 
     g_mutex_init(&(pt->tree_access_mutex));
 
@@ -254,15 +246,16 @@ path_tree *path_tree_init(void) {
 
 }
 
-void path_tree_build(path_tree **pt, const char * path, gint *cancel, int threads, bool one_file_system) {
-    add_in_tree_in_iter(path, &((*pt)->root), &((*pt)->tree_access_mutex), cancel, threads, one_file_system);
-    g_atomic_int_set(&(*pt)->finished, 1);
+void path_tree_build(path_tree *pt, const char * path, gint *cancel, int threads, bool one_file_system) {
+    add_in_tree_in_iter(path, &(pt->root), &(pt->tree_access_mutex), cancel, threads, one_file_system);
+    g_atomic_int_set(&pt->finished, 1);
 }
 
 void path_tree_destroy(path_tree *tree) {
+    if(tree->root != (GNode *)NULL) {
+        g_node_traverse(tree->root, G_PRE_ORDER, G_TRAVERSE_ALL, -1, free_node_memory, NULL);
+        g_node_destroy(tree->root);
+    }
     g_mutex_clear(&(tree->tree_access_mutex));
-    //g_node_traverse(tree->root, G_PRE_ORDER, G_TRAVERSE_ALL, -1, free_node_memory, NULL);
-    //g_node_destroy(tree->root);
-    //g_free(tree);
-    //tree = NULL;
+    g_free(tree);
 }

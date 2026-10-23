@@ -19,16 +19,14 @@
 #ifndef path_tree_h
 #define path_tree_h
 
-#include <stdio.h>
 #include <glib.h>
-#include <pthread.h>
 #include <stdbool.h>
 
 typedef struct path_tree {
-    GNode *root;
-    GMutex tree_access_mutex;
-    gint finished;      // set atomically to 1 when the scan is complete
-} path_tree, *path_tree_ptr;
+    GNode *root;                // node data is path_data
+    GMutex tree_access_mutex;   // guards the tree shape and all path_data while the scan runs
+    gint finished;              // set atomically to 1 when the scan is complete
+} path_tree;
 
 /**
  * Initialize tree and return pointer.
@@ -42,16 +40,16 @@ path_tree *path_tree_init(void);
  * Node sizes and counts are kept up to date while the tree is built.
  * Sizes follow du: allocated blocks, directories included, hard links counted once.
  *
- * @param pt Pointer to the struct to create.
+ * @param pt Tree to fill, from path_tree_init.
  * @param path The path will be the root of the tree.
  * @param cancel Set to non zero with g_atomic_int_set to abort the scan
  * @param threads The number of threads in build tree pool
  * @param one_file_system Skip entries on other filesystems than path (du -x)
  */
-void path_tree_build(path_tree **pt, const char * path, gint *cancel, int threads, bool one_file_system);
+void path_tree_build(path_tree *pt, const char * path, gint *cancel, int threads, bool one_file_system);
 
 /**
- * Clears given tree and releases allocated resources.
+ * Frees the tree, all its nodes and their data. The build must have returned.
  *
  * @param tree Pointer to the tree.
  */

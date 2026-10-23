@@ -16,8 +16,13 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#ifndef _XOPEN_SOURCE
+#define _XOPEN_SOURCE 700  /* wcwidth - the ncursesw pkg-config flags usually define it already */
+#endif
 #include "helpers.h"
 #include <stdio.h>
+#include <string.h>
+#include <wchar.h>
 
 gchar * get_pretty_size(unsigned long long size) {
     // unsigned long long tops out at 16 EB, so the index never runs past "EB"
@@ -34,7 +39,6 @@ gchar * get_pretty_size(unsigned long long size) {
 }
 
 gchar* get_str_normalized_padded(const char * utf8_str, int final_length) {
-    gchar *truncated_str;
     if (final_length < 0) final_length = 0;
     // Filenames are arbitrary bytes, not necessarily UTF-8: replace invalid sequences with U+FFFD first,
     // otherwise g_utf8_normalize returns NULL.
@@ -44,24 +48,29 @@ gchar* get_str_normalized_padded(const char * utf8_str, int final_length) {
     gchar *normalized_str = g_utf8_normalize(valid_str, -1, G_NORMALIZE_DEFAULT_COMPOSE);
     g_free(valid_str);
 
-    if (g_utf8_strlen(normalized_str, -1) > final_length) {
-        gchar *end_ptr = g_utf8_offset_to_pointer(normalized_str, final_length);
-        truncated_str = g_strndup(normalized_str, end_ptr - normalized_str);
-    } else {
-        truncated_str = g_strdup(normalized_str);
+    // cut and pad by terminal columns, not characters: CJK and most emoji take 2 columns, combining marks 0.
+    // wcwidth is what ncurses uses to place characters, so the columns after the name stay aligned.
+    GString *padded = g_string_sized_new(strlen(normalized_str) + final_length);
+    int width = 0;
+    for (const gchar *p = normalized_str; *p != '\0'; p = g_utf8_next_char(p)) {
+        gunichar c = g_utf8_get_char(p);
+        int w = wcwidth((wchar_t)c);
+        if (w < 0) {
+            // not printable - e.g. a newline in a filename would break the row
+            c = '?';
+            w = 1;
+        }
+        if (width + w > final_length)
+            break;
+        g_string_append_unichar(padded, c);
+        width += w;
     }
+    // a 2 column character that did not fit leaves 1 column to pad
+    for (; width < final_length; width++)
+        g_string_append_c(padded, ' ');
 
-    glong len = g_utf8_strlen(truncated_str, -1);
-    glong padding = final_length - len;
-    if (padding < 0) padding = 0;
-    gchar *pad_str = g_strnfill(padding, ' ');
-    
-    gchar *padded_str = g_strconcat(truncated_str, pad_str, NULL);
-    
-    g_free(truncated_str);
-    g_free(pad_str);
     g_free(normalized_str);
-    
-    return padded_str;
-    
+
+    return g_string_free(padded, FALSE);
+
 }

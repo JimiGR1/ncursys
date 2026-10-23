@@ -21,7 +21,6 @@
 
 #define INVALID_ARGUMENTS 1001
 #define CURSES_INIT_ERROR 3000
-#define MEMORY_ALLOCATION_ERROR 5000
 
 
 #endif /* errors_h */

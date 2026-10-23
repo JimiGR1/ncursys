@@ -22,14 +22,12 @@
 
 #define TERM_DEFAULT 1
 
-/* the pad height follows the number of entries, in steps of this many lines */
-#define FILESYSTEM_PAD_CHUNK_LINES 1000
-/* screen refresh interval in microseconds */
+/* rows are re-laid out (sizes change while scanning) every this many microseconds */
 #define REFRESH_INTERVAL 500000
-/* print tree rebuild interval in milliseconds */
-#define REBUILD_PRINT_TREE_INTERVAL 10
-/* optimal pad width */
-#define OPT_PAD_WIDTH 108
+/* getch waits at most this many milliseconds for a key, bounds how late a refresh can be */
+#define INPUT_POLL_INTERVAL 100
+/* optimal list width */
+#define OPT_LIST_WIDTH 108
 /* terminal width must be at least MIN_COLS */
 #define MIN_COLS 76
 /* terminal height must be at least MIN_LINES */

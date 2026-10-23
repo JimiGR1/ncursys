@@ -20,19 +20,18 @@
 #define path_data_h
 
 #include <stdbool.h>
-#include "print_node.h"
+#include <glib.h>
 
 typedef struct path_data {
-    gchar *fullpath;
     gchar *filename;
-    unsigned long long size;
+    unsigned long long size;    // own blocks plus all descendants
     bool is_directory;
-    int num_files;
-    int num_dirs;
+    int num_files;              // all descendant files
+    int num_dirs;               // all descendant directories
 } path_data;
 
 /**
- * Release path_data allocated memory.
+ * Release path_data and its allocated memory.
  *
  * @param pd Pointer to the struct to release.
  */
@@ -41,30 +40,10 @@ void        path_data_destroy(path_data *pd);
 /**
  * Creates new path_data.
  *
- * @param fullpath The fullpath.
  * @param filename The filename.
- * @param is_direcotry True if directory.
+ * @param is_directory True if directory.
  * @return Pointer to created object.
  */
-path_data*  path_data_create(const char *fullpath, const char *filename, bool is_direcotry);
-
-/**
- * Compares the corresponding filenames of given GNodes.
- *
- * @param a Pointer to left GNode.
- * @param b Pointer to right GNode.
- * @return The result of strcmp between a and b filepaths
- */
-gint        path_data_compare_filename(gconstpointer a, gconstpointer b);
-
-/**
- * Compares the corresponding sizes of given GNodes.
- *
- * @param a Pointer to left GNode.
- * @param b Pointer to right GNode.
- * @return -1 if a < b, 1 if a > b, 0 otherwise
- */
-gint        path_data_compare_filesize(gconstpointer a, gconstpointer b);
+path_data*  path_data_create(const char *filename, bool is_directory);
 
 #endif /* path_data_h */
-

@@ -22,6 +22,7 @@
 #include <glib.h>
 
 gchar*   get_pretty_size(unsigned long long size);
+/* filename made displayable (valid UTF-8, NFC, control characters as '?'), cut or padded to exactly final_length terminal columns */
 gchar*   get_str_normalized_padded(const char * utf8_str, int final_length);
 
 #endif /* helpers_h */

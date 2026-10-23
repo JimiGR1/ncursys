@@ -8,8 +8,7 @@ math_dep = cc.find_library('m', required: false)
 sources = [
   'main.c',
   'path_data.c',
-  'print_node.c',
-  'print_tree.c',
+  'tree_view.c',
   'path_tree.c',
   'helpers.c'
 ]
