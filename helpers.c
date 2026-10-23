@@ -17,7 +17,7 @@
  */
 
 #ifndef _XOPEN_SOURCE
-#define _XOPEN_SOURCE 700  /* wcwidth - the ncursesw pkg-config flags usually define it already */
+#define _XOPEN_SOURCE 700 
 #endif
 #include "helpers.h"
 #include <stdio.h>
@@ -48,7 +48,7 @@ gchar* get_str_normalized_padded(const char * utf8_str, int final_length) {
     gchar *normalized_str = g_utf8_normalize(valid_str, -1, G_NORMALIZE_DEFAULT_COMPOSE);
     g_free(valid_str);
 
-    // cut and pad by terminal columns, not characters: CJK and most emoji take 2 columns, combining marks 0.
+    // cut and pad by terminal columns: CJK and most emoji take 2 columns, combining marks 0.
     // wcwidth is what ncurses uses to place characters, so the columns after the name stay aligned.
     GString *padded = g_string_sized_new(strlen(normalized_str) + final_length);
     int width = 0;

@@ -19,7 +19,6 @@
 #ifndef errors_h
 #define errors_h
 
-#define INVALID_ARGUMENTS 1001
 #define CURSES_INIT_ERROR 3000
 
 
